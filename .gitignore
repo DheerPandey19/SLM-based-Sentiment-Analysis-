@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# Downloaded review dumps (regenerate with scripts/download_reviews.py)
+data/raw/*.jsonl
+
+# Hugging Face cache (if pointed into the repo)
+.cache/
