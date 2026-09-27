@@ -9,3 +9,6 @@ data/raw/*.jsonl
 
 # Hugging Face cache (if pointed into the repo)
 .cache/
+
+.env
+data/labeled/
