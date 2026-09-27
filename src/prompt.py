@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from schema import MOVIE_ASPECTS
+from .schema import MOVIE_ASPECTS
 
 
 SYSTEM_PROMPT = f"""You label movie reviews for sentiment and aspects.
