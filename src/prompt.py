@@ -15,7 +15,11 @@ Allowed aspects: {", ".join(sorted(MOVIE_ASPECTS))}
 Allowed sentiments: positive, negative, mixed
 Rules:
 - Only include aspects the review actually discusses.
-- Do not invent aspects or add extra keys.
+- Use ONLY the allowed aspect names above. Never invent keys
+  like action, animation, humor, characterisation, etc.
+  Map those ideas to the closest allowed aspect (e.g. animation→visuals,
+  characterisation→acting, humor→dialogue, music→soundtrack).
+- Do not add extra keys.
 - overall should reflect the review as a whole.
 - If no aspects are clearly discussed, use an empty aspects object.
 """
