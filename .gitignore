@@ -12,3 +12,12 @@ data/raw/*.jsonl
 
 .env
 data/labeled/
+
+# Phase 2+ artifacts (keep local; regenerate / re-download as needed)
+outputs/
+splits.zip
+
+# Large model binaries — host on Drive / HF Hub, not GitHub
+*.gguf
+lora-adapter.zip
+qwen-aspect-lora.zip
