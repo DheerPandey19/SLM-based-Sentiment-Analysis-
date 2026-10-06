@@ -41,14 +41,7 @@ Fine-tuned wins every column. That is the writeup claim: LoRA helps most when yo
 
 Both models **over-predict aspects**. Gold averages ~2–3 tags; preds often dump most of the allowed list. Precision stays ~0.28–0.34 even when overall looks fine (~86–88%). Fixing that is the next phase — not chasing overall accuracy further.
 
-## Next: fix over-tagging
 
-1. ~~Full test eval (n=250)~~
-2. ~~Weak-prompt ablation~~ — fine-tuned wins without few-shot
-3. **Spot-check / clean teacher labels** — catch dense or noisy gold
-4. **Upsample sparse / empty `aspects`** — teach when *not* to tag
-5. **Retrain LoRA** — same `build_messages` / chat template as eval; select by val aspect F1
-6. Later: Gradio demo, cost/latency note, optional constrained decoding
 
 ## Repo layout
 
