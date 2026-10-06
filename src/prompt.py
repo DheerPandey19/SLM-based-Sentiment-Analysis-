@@ -23,6 +23,14 @@ Rules:
 - overall should reflect the review as a whole.
 - If no aspects are clearly discussed, use an empty aspects object.
 """
+
+# Short system for prompt ablation: schema only, no few-shot scaffolding.
+WEAK_SYSTEM_PROMPT = f"""Return ONLY JSON:
+{{"overall": "positive"|"negative"|"mixed", "aspects": {{"<aspect>": "positive"|"negative"|"mixed"}}}}
+Allowed aspects: {", ".join(sorted(MOVIE_ASPECTS))}
+Only tag aspects the review clearly discusses; otherwise use {{}}.
+"""
+
 FEW_SHOT_USER = """Review:
 The acting was fantastic and the lead carried every scene, but the pacing dragged badly in the middle and the ending felt rushed."""
 FEW_SHOT_ASSISTANT = """{
@@ -34,7 +42,22 @@ FEW_SHOT_ASSISTANT = """{
 }"""
 
 
-def build_messages(review_text: str) -> list[dict[str, str]]:
+def build_messages(
+    review_text: str, style: str = "full"
+) -> list[dict[str, str]]:
+    """Build chat messages for labeling.
+
+    style:
+      full — system rules + few-shot + review (default, matches training/eval)
+      weak — short system only + review (no few-shot; for ablation)
+    """
+    if style == "weak":
+        return [
+            {"role": "system", "content": WEAK_SYSTEM_PROMPT},
+            {"role": "user", "content": f"Review:\n{review_text}"},
+        ]
+    if style != "full":
+        raise ValueError(f"unknown prompt style: {style!r} (expected 'full' or 'weak')")
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": FEW_SHOT_USER},

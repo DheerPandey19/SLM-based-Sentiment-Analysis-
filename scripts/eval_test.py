@@ -2,7 +2,8 @@
 
 Usage:
   python scripts/eval_test.py --backend gguf --model qwen-aspect-Q4_K_M.gguf --limit 25
-  python scripts/eval_test.py --backend gguf --model qwen2.5-1.5b-instruct-Q4_K_M.gguf --limit 25
+  python scripts/eval_test.py --backend gguf --model qwen2.5-1.5b-instruct-q4_k_m.gguf --limit 25
+  python scripts/eval_test.py --backend gguf --model qwen-aspect-Q4_K_M.gguf --prompt weak --limit 25
   python scripts/eval_test.py --backend openai --model gpt-4o-mini --limit 25
   python scripts/eval_test.py --backend gguf --model qwen-aspect-Q4_K_M.gguf --resume
 """
@@ -44,12 +45,19 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--llama-cli", type=Path, default=DEFAULT_LLAMA_CLI)
     p.add_argument("--tokenizer", default=DEFAULT_TOKENIZER_ID)
     p.add_argument("--n-predict", type=int, default=128)
+    p.add_argument(
+        "--prompt",
+        choices=("full", "weak"),
+        default="full",
+        help="Prompt style: full (few-shot) or weak (short system, no few-shot)",
+    )
     return p.parse_args()
 
 
-def pred_path(out_dir: Path, backend: str, model: str) -> Path:
+def pred_path(out_dir: Path, backend: str, model: str, prompt: str = "full") -> Path:
     stem = Path(model).stem if backend == "gguf" else model.replace("/", "_")
-    return out_dir / f"{backend}_{stem}.jsonl"
+    suffix = "" if prompt == "full" else f"_{prompt}"
+    return out_dir / f"{backend}_{stem}{suffix}.jsonl"
 
 
 def load_done(path: Path) -> dict[str, dict]:
@@ -83,7 +91,7 @@ def main() -> None:
         rows = rows[: args.limit]
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    out = pred_path(args.out_dir, args.backend, args.model)
+    out = pred_path(args.out_dir, args.backend, args.model, args.prompt)
     done = load_done(out) if args.resume else {}
 
     client: OpenAI | None = None
@@ -94,7 +102,7 @@ def main() -> None:
     score_rows: list[dict] = []
 
     with out.open(mode, encoding="utf-8") as fout:
-        for row in tqdm(rows, desc=f"eval:{args.backend}"):
+        for row in tqdm(rows, desc=f"eval:{args.backend}:{args.prompt}"):
             rid = row["id"]
             gold = gold_label(row)
 
@@ -119,11 +127,14 @@ def main() -> None:
                         llama_cli=args.llama_cli,
                         tokenizer_id=args.tokenizer,
                         n_predict=args.n_predict,
+                        prompt_style=args.prompt,
                     )
                 else:
                     assert client is not None
                     t0 = time.perf_counter()
-                    labeled = label_review(client, row["text"], model=args.model)
+                    labeled = label_review(
+                        client, row["text"], model=args.model, prompt_style=args.prompt
+                    )
                     latency = time.perf_counter() - t0
                     pred = {
                         "overall": labeled["overall"],
@@ -145,6 +156,7 @@ def main() -> None:
                 "error": error,
                 "backend": args.backend,
                 "model": str(args.model),
+                "prompt": args.prompt,
             }
             fout.write(json.dumps(record, ensure_ascii=False) + "\n")
             fout.flush()
@@ -152,6 +164,7 @@ def main() -> None:
     summary = aggregate(score_rows)
     summary["backend"] = args.backend
     summary["model"] = str(args.model)
+    summary["prompt"] = args.prompt
     summary["predictions"] = str(out)
 
     summary_path = args.out_dir / "summary.json"
@@ -163,11 +176,15 @@ def main() -> None:
                 summaries = [summaries]
         except json.JSONDecodeError:
             summaries = []
-    summaries = [
-        s
-        for s in summaries
-        if not (s.get("backend") == args.backend and s.get("model") == str(args.model))
-    ]
+
+    def _same_run(s: dict) -> bool:
+        return (
+            s.get("backend") == args.backend
+            and s.get("model") == str(args.model)
+            and s.get("prompt", "full") == args.prompt
+        )
+
+    summaries = [s for s in summaries if not _same_run(s)]
     summaries.append(summary)
     summary_path.write_text(json.dumps(summaries, indent=2), encoding="utf-8")
 

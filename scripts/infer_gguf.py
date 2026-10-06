@@ -31,6 +31,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--tokenizer", default=DEFAULT_TOKENIZER_ID)
     p.add_argument("--n-predict", type=int, default=128)
     p.add_argument("--temp", type=float, default=0.0)
+    p.add_argument(
+        "--prompt",
+        choices=("full", "weak"),
+        default="full",
+        help="Prompt style: full (few-shot) or weak (no few-shot)",
+    )
     return p.parse_args()
 
 
@@ -49,6 +55,7 @@ def main() -> None:
             tokenizer_id=args.tokenizer,
             n_predict=args.n_predict,
             temp=args.temp,
+            prompt_style=args.prompt,
         )
     except Exception as e:
         raise SystemExit(str(e)) from e

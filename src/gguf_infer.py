@@ -76,6 +76,7 @@ def run_gguf(
     tokenizer_id: str = DEFAULT_TOKENIZER_ID,
     n_predict: int = 128,
     temp: float = 0.0,
+    prompt_style: str = "full",
 ) -> tuple[dict, float]:
     """Label one review with a local GGUF.
 
@@ -89,7 +90,7 @@ def run_gguf(
     if not llama_cli.exists():
         raise FileNotFoundError(f"llama-cli not found: {llama_cli}")
 
-    messages = build_messages(review.strip())
+    messages = build_messages(review.strip(), style=prompt_style)
     tok = _get_tokenizer(tokenizer_id)
     prompt = tok.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True

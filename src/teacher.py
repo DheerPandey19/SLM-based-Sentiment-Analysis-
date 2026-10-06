@@ -15,6 +15,7 @@ def label_review(
     text: str,
     model: str = "gpt-4o-mini",
     max_retries: int = 2,
+    prompt_style: str = "full",
 ) -> dict:
     """Return {overall, aspects, teacher_model} for one review."""
     last_error: Exception | None = None
@@ -23,7 +24,7 @@ def label_review(
         try:
             resp = client.chat.completions.create(
                 model=model,
-                messages=build_messages(text),
+                messages=build_messages(text, style=prompt_style),
                 response_format={"type": "json_object"},
                 temperature=0,
             )
