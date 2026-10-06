@@ -1,74 +1,88 @@
 # Small Language Model (SLM) Aspect Sentiment Tagger
 
-Work-in-progress project: turn a movie review into structured **JavaScript Object Notation (JSON)** with overall sentiment and per-aspect sentiments (plot, acting, visuals, pacing, dialogue, soundtrack, direction).
+Distill GPT-4o-mini’s judgment into a **1.5B** model that turns a movie review into structured JSON: overall sentiment plus per-aspect tags (plot, acting, visuals, pacing, dialogue, soundtrack, direction) — then run it locally as GGUF on CPU.
 
-Results below are on the full held-out test set (**250** reviews), not a small pilot slice.
+**Headline so far:** under a strong few-shot prompt the fine-tuned and base models are close; under a **weak** prompt (no few-shot), the fine-tuned model wins across the board. Distillation buys robustness when scaffolding is removed. The remaining hole is **aspect over-tagging** (precision ~0.3): both locals invent tags the gold label did not use.
 
-## What it does
+All numbers below are on the full held-out test set (**250** reviews).
 
-1. **Data** — Pull IMDb-style reviews, label them with a teacher model (**Generative Pre-trained Transformer 4o mini (GPT-4o-mini)**), split train / validation / test.
-2. **Train** — **Low-Rank Adaptation (LoRA)** fine-tune of **Qwen2.5-1.5B-Instruct** on Google Colab (adapter kept local / Google Drive, not in git).
-3. **Deploy locally** — Merge adapter, convert to **GPT-Generated Unified Format (GGUF)**, quantize to **Q4_K_M**, run with **llama.cpp** on CPU.
-4. **Eval** — Compare fine-tuned GGUF vs base Qwen GGUF (and optionally GPT-4o-mini) on the held-out test set.
+## Pipeline
 
-## Full test results (250 reviews)
+1. **Data** — IMDb-style reviews, teacher-labeled with **GPT-4o-mini**, split train / val / test (~2000 / 250 / 250).
+2. **Train** — **LoRA** fine-tune of **Qwen2.5-1.5B-Instruct** on Colab (adapter local / Drive, not in git).
+3. **Deploy** — Merge → **GGUF Q4_K_M** → **llama.cpp** on CPU.
+4. **Eval** — Fine-tuned GGUF vs base GGUF; optional GPT-4o-mini ceiling.
 
-Same prompt recipe for both local systems (system instructions + few-shot example). Gold labels were written by GPT-4o-mini, so a teacher row would be a soft ceiling (teacher agreeing with itself), not an independent human score. Full-test GPT eval is optional / not run yet; an earlier n=25 pilot had GPT at ~100% overall / ~0.98 aspect F1.
+Gold labels are teacher-written, so a full GPT row would be a soft ceiling (teacher agreeing with itself), not independent human truth. GPT on the full 250 is optional; an n=25 pilot sat at ~100% overall / ~0.98 aspect F1.
+
+## Results (n=250)
+
+### Full prompt (system + few-shot)
 
 | System | JSON validity | Overall accuracy | Aspect P | Aspect R | Aspect F1 | Mean latency |
 |--------|---------------|------------------|----------|----------|-----------|--------------|
 | Fine-tuned Qwen GGUF (ours) | **98.4%** | 87.0% | 0.34 | **0.73** | **0.47** | ~22 s (CPU) |
 | Base Qwen2.5-1.5B-Instruct GGUF | 93.2% | **88.4%** | 0.34 | 0.69 | 0.45 | ~22 s (CPU) |
 
-**F1** = harmonic mean of precision and recall for aspect–sentiment pairs.
+Close call: fine-tuned edges validity and aspect F1; base slightly ahead on overall sentiment.
 
-### Honest takeaway so far
+### Weak prompt (short system, no few-shot) — `--prompt weak`
 
-- A small n=25 pilot overstated “base clearly wins.” On **n=250**, fine-tuned edges **aspect F1** and **JSON validity**; overall accuracy is roughly tied (base slightly ahead).
-- Both local models still **over-predict aspects** (precision ~0.34): they invent tags the gold label did not use. That is the main quality hole.
-- Next: weak-prompt ablation (does LoRA help without few-shot scaffolding?), then cleaner / sparser labels and a format-aligned retrain.
+| System | JSON validity | Overall accuracy | Aspect P | Aspect R | Aspect F1 | Mean latency |
+|--------|---------------|------------------|----------|----------|-----------|--------------|
+| Fine-tuned Qwen GGUF (ours) | **96.0%** | **86.3%** | **0.31** | **0.79** | **0.44** | ~14 s (CPU) |
+| Base Qwen2.5-1.5B-Instruct GGUF | 86.4% | 83.8% | 0.28 | 0.71 | 0.41 | ~11 s (CPU) |
 
-## How we plan to improve accuracy
+Fine-tuned wins every column. That is the writeup claim: LoRA helps most when you drop the few-shot crutch.
 
-1. ~~**Full test evaluation**~~ — Done (250 reviews, fine-tuned vs base).
-2. **Prompt ablation** — Compare base vs fine-tuned with a short / minimal prompt. LoRA often helps when the long few-shot scaffold is removed.
-3. **Cleaner aspect labels** — Spot-check teacher labels; add more examples with sparse or empty `aspects` so the model learns when *not* to tag.
-4. **Training alignment** — Make sure Colab training uses the same chat template and `build_messages` format as local eval.
-5. **Tune LoRA** — Adjust learning rate, rank, and early stopping using aspect F1 (not only loss).
-6. **Optional decoding constraints** — JSON / grammar constrained decoding in llama.cpp if validity ever drops.
+**Overall accuracy** = `overall` match among valid JSON only. **Aspect P/R/F1** = exact `(aspect, sentiment)` pairs. High overall does not mean good aspect tagging.
+
+### What is still wrong
+
+Both models **over-predict aspects**. Gold averages ~2–3 tags; preds often dump most of the allowed list. Precision stays ~0.28–0.34 even when overall looks fine (~86–88%). Fixing that is the next phase — not chasing overall accuracy further.
+
+## Next: fix over-tagging
+
+1. ~~Full test eval (n=250)~~
+2. ~~Weak-prompt ablation~~ — fine-tuned wins without few-shot
+3. **Spot-check / clean teacher labels** — catch dense or noisy gold
+4. **Upsample sparse / empty `aspects`** — teach when *not* to tag
+5. **Retrain LoRA** — same `build_messages` / chat template as eval; select by val aspect F1
+6. Later: Gradio demo, cost/latency note, optional constrained decoding
 
 ## Repo layout
 
 | Path | Role |
 |------|------|
 | `src/schema.py` | Allowed aspects and label validation |
-| `src/prompt.py` | Teacher / student chat messages |
+| `src/prompt.py` | `full` / `weak` chat messages |
 | `src/teacher.py` | GPT-4o-mini labeling helper |
 | `src/gguf_infer.py` | Local GGUF inference via llama.cpp |
 | `src/metrics.py` | Eval metrics |
 | `scripts/` | Download, label, split, infer, eval |
-| `data/splits/` | Train / val / test JSONL (labels included) |
+| `data/splits/` | Train / val / test JSONL |
 | `docs/roadmap.md` | Longer project plan |
 
-Large files (**GGUF** weights, LoRA adapters, raw eval dumps under `outputs/`) stay local or on Drive — see `.gitignore`.
+Large artifacts (**GGUF**, LoRA adapters, `outputs/`) stay local or on Drive — see `.gitignore`.
 
-## Quick start (local GGUF)
+## Quick start
 
-Requires: Python deps from `requirements.txt`, `llama-cli` from llama.cpp, and your `qwen-aspect-Q4_K_M.gguf` in the project root.
+Requires: `requirements.txt`, `llama-cli` from llama.cpp, and `qwen-aspect-Q4_K_M.gguf` in the project root.
 
 ```powershell
 pip install -r requirements.txt
 python scripts/infer_gguf.py --review "Great acting, but the pacing dragged."
 ```
 
-Full test eval (example):
+Eval:
 
 ```powershell
 python scripts/eval_test.py --backend gguf --model qwen-aspect-Q4_K_M.gguf --resume
 python scripts/eval_test.py --backend gguf --model qwen2.5-1.5b-instruct-q4_k_m.gguf --resume
+python scripts/eval_test.py --backend gguf --model qwen-aspect-Q4_K_M.gguf --prompt weak --resume
 ```
 
-Use `--limit 25` for a quick smoke run.
+`--limit 25` for a smoke run. `--prompt weak` writes separate `*_weak.jsonl` dumps.
 
 ## Status
 
@@ -76,8 +90,8 @@ Use `--limit 25` for a quick smoke run.
 |-------|--------|
 | Data + teacher labels + splits | Done |
 | LoRA fine-tune + GGUF export | Done (artifacts local) |
-| Local infer + pilot eval (n=25) | Done |
 | Full test eval (n=250) FT vs base | Done |
-| Prompt ablation + label cleanup + demo / writeup polish | In progress |
+| Weak-prompt ablation (n=250) | Done — FT wins |
+| Label cleanup + retrain + demo / writeup | Next |
 
-Feedback and iteration welcome — the goal is a clear, reproducible SLM case study, not a one-shot leaderboard claim.
+Goal: a clear, reproducible SLM distillation case study — not a one-shot leaderboard claim.
