@@ -15,6 +15,8 @@ Allowed aspects: {", ".join(sorted(MOVIE_ASPECTS))}
 Allowed sentiments: positive, negative, mixed
 Rules:
 - Only include aspects the review actually discusses.
+- Prefer fewer aspects. Empty aspects {{}} is correct when nothing specific is discussed.
+- Do not dump the full aspect list. Two or three tags is typical; seven is almost never right.
 - Use ONLY the allowed aspect names above. Never invent keys
   like action, animation, humor, characterisation, etc.
   Map those ideas to the closest allowed aspect (e.g. animation→visuals,
@@ -41,6 +43,14 @@ FEW_SHOT_ASSISTANT = """{
   }
 }"""
 
+# Second shot: sparse / empty aspects — teach when not to tag.
+FEW_SHOT_SPARSE_USER = """Review:
+Just an okay movie. Nothing special, nothing terrible. I watched it once and moved on."""
+FEW_SHOT_SPARSE_ASSISTANT = """{
+  "overall": "mixed",
+  "aspects": {}
+}"""
+
 
 def build_messages(
     review_text: str, style: str = "full"
@@ -48,7 +58,7 @@ def build_messages(
     """Build chat messages for labeling.
 
     style:
-      full — system rules + few-shot + review (default, matches training/eval)
+      full — system rules + few-shot (mixed + empty) + review
       weak — short system only + review (no few-shot; for ablation)
     """
     if style == "weak":
@@ -62,5 +72,7 @@ def build_messages(
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": FEW_SHOT_USER},
         {"role": "assistant", "content": FEW_SHOT_ASSISTANT},
+        {"role": "user", "content": FEW_SHOT_SPARSE_USER},
+        {"role": "assistant", "content": FEW_SHOT_SPARSE_ASSISTANT},
         {"role": "user", "content": f"Review:\n{review_text}"},
     ]

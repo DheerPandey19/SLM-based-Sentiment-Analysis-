@@ -37,6 +37,11 @@ def parse_args() -> argparse.Namespace:
         default="full",
         help="Prompt style: full (few-shot) or weak (no few-shot)",
     )
+    p.add_argument(
+        "--filter-aspects",
+        action="store_true",
+        help="Drop predicted aspects with no keyword evidence in the review",
+    )
     return p.parse_args()
 
 
@@ -56,6 +61,7 @@ def main() -> None:
             n_predict=args.n_predict,
             temp=args.temp,
             prompt_style=args.prompt,
+            filter_aspects_flag=args.filter_aspects,
         )
     except Exception as e:
         raise SystemExit(str(e)) from e

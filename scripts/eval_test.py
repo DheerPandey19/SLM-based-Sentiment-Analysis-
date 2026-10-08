@@ -4,6 +4,7 @@ Usage:
   python scripts/eval_test.py --backend gguf --model qwen-aspect-Q4_K_M.gguf --limit 25
   python scripts/eval_test.py --backend gguf --model qwen2.5-1.5b-instruct-q4_k_m.gguf --limit 25
   python scripts/eval_test.py --backend gguf --model qwen-aspect-Q4_K_M.gguf --prompt weak --limit 25
+  python scripts/eval_test.py --backend gguf --model qwen-aspect-Q4_K_M.gguf --filter-aspects --limit 25
   python scripts/eval_test.py --backend openai --model gpt-4o-mini --limit 25
   python scripts/eval_test.py --backend gguf --model qwen-aspect-Q4_K_M.gguf --resume
 """
@@ -24,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src.aspect_filter import filter_aspects
 from src.gguf_infer import DEFAULT_LLAMA_CLI, DEFAULT_TOKENIZER_ID, run_gguf
 from src.metrics import aggregate, score_example
 from src.schema import validate_label
@@ -51,13 +53,28 @@ def parse_args() -> argparse.Namespace:
         default="full",
         help="Prompt style: full (few-shot) or weak (short system, no few-shot)",
     )
+    p.add_argument(
+        "--filter-aspects",
+        action="store_true",
+        help="Drop predicted aspects with no keyword evidence in the review",
+    )
     return p.parse_args()
 
 
-def pred_path(out_dir: Path, backend: str, model: str, prompt: str = "full") -> Path:
+def pred_path(
+    out_dir: Path,
+    backend: str,
+    model: str,
+    prompt: str = "full",
+    filter_aspects_flag: bool = False,
+) -> Path:
     stem = Path(model).stem if backend == "gguf" else model.replace("/", "_")
-    suffix = "" if prompt == "full" else f"_{prompt}"
-    return out_dir / f"{backend}_{stem}{suffix}.jsonl"
+    parts = [backend, stem]
+    if prompt != "full":
+        parts.append(prompt)
+    if filter_aspects_flag:
+        parts.append("filtered")
+    return out_dir / ("_".join(parts) + ".jsonl")
 
 
 def load_done(path: Path) -> dict[str, dict]:
@@ -91,7 +108,13 @@ def main() -> None:
         rows = rows[: args.limit]
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    out = pred_path(args.out_dir, args.backend, args.model, args.prompt)
+    out = pred_path(
+        args.out_dir,
+        args.backend,
+        args.model,
+        args.prompt,
+        args.filter_aspects,
+    )
     done = load_done(out) if args.resume else {}
 
     client: OpenAI | None = None
@@ -100,9 +123,12 @@ def main() -> None:
 
     mode = "a" if args.resume and out.exists() else "w"
     score_rows: list[dict] = []
+    desc = f"eval:{args.backend}:{args.prompt}"
+    if args.filter_aspects:
+        desc += ":filtered"
 
     with out.open(mode, encoding="utf-8") as fout:
-        for row in tqdm(rows, desc=f"eval:{args.backend}:{args.prompt}"):
+        for row in tqdm(rows, desc=desc):
             rid = row["id"]
             gold = gold_label(row)
 
@@ -128,6 +154,7 @@ def main() -> None:
                         tokenizer_id=args.tokenizer,
                         n_predict=args.n_predict,
                         prompt_style=args.prompt,
+                        filter_aspects_flag=args.filter_aspects,
                     )
                 else:
                     assert client is not None
@@ -140,6 +167,8 @@ def main() -> None:
                         "overall": labeled["overall"],
                         "aspects": labeled["aspects"],
                     }
+                    if args.filter_aspects:
+                        pred = filter_aspects(pred, row["text"])
             except Exception as e:
                 error = str(e)
 
@@ -157,6 +186,7 @@ def main() -> None:
                 "backend": args.backend,
                 "model": str(args.model),
                 "prompt": args.prompt,
+                "filter_aspects": args.filter_aspects,
             }
             fout.write(json.dumps(record, ensure_ascii=False) + "\n")
             fout.flush()
@@ -165,6 +195,7 @@ def main() -> None:
     summary["backend"] = args.backend
     summary["model"] = str(args.model)
     summary["prompt"] = args.prompt
+    summary["filter_aspects"] = args.filter_aspects
     summary["predictions"] = str(out)
 
     summary_path = args.out_dir / "summary.json"
@@ -182,6 +213,7 @@ def main() -> None:
             s.get("backend") == args.backend
             and s.get("model") == str(args.model)
             and s.get("prompt", "full") == args.prompt
+            and bool(s.get("filter_aspects", False)) == args.filter_aspects
         )
 
     summaries = [s for s in summaries if not _same_run(s)]

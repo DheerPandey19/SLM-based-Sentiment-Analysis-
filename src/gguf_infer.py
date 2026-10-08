@@ -11,6 +11,7 @@ from pathlib import Path
 
 from transformers import AutoTokenizer
 
+from .aspect_filter import filter_aspects
 from .prompt import build_messages
 from .schema import validate_label
 
@@ -77,6 +78,7 @@ def run_gguf(
     n_predict: int = 128,
     temp: float = 0.0,
     prompt_style: str = "full",
+    filter_aspects_flag: bool = False,
 ) -> tuple[dict, float]:
     """Label one review with a local GGUF.
 
@@ -90,7 +92,8 @@ def run_gguf(
     if not llama_cli.exists():
         raise FileNotFoundError(f"llama-cli not found: {llama_cli}")
 
-    messages = build_messages(review.strip(), style=prompt_style)
+    review_text = review.strip()
+    messages = build_messages(review_text, style=prompt_style)
     tok = _get_tokenizer(tokenizer_id)
     prompt = tok.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True
@@ -128,4 +131,6 @@ def run_gguf(
         raise RuntimeError(f"llama-cli failed ({result.returncode}):\n{raw}")
 
     cleaned = validate_label(extract_json(raw))
+    if filter_aspects_flag:
+        cleaned = filter_aspects(cleaned, review_text)
     return cleaned, latency
