@@ -1,5 +1,7 @@
 # Movie/Book Review Sentiment + Aspect Tagger
 
+> Historical plan. The shipped case study is **movies only** (Phases 1–3 + eval + weak-prompt ablation + inference aspect filter). See the root [README](../README.md) for final results. Books, Gradio, and NPU were not built.
+
 ## Task definition
 
 Given a review, output structured tags instead of just "positive/negative":
